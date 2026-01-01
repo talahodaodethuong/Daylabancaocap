@@ -182,6 +182,9 @@ AnimationService.Animations = {}
 AnimationService.Enabled = {}
 AnimationService.Options = {}
 
+AnimationService.PriorityLock = false
+AnimationService.BlockLowerPriorityOnly = true
+
 local function setupAnimator()
     if not AnimationService.Humanoid then return end
 
@@ -197,6 +200,33 @@ local function setupAnimator()
     end
 
     table.clear(AnimationService.Tracks)
+end
+
+function AnimationService:_blockOtherAnimations(currentTrack)
+    if not self.PriorityLock or not self.Animator then return end
+
+    for _, track in ipairs(self.Animator:GetPlayingAnimationTracks()) do
+        if track ~= currentTrack then
+            local isOurTrack = false
+
+            for _, t in pairs(self.Tracks) do
+                if t == track then
+                    isOurTrack = true
+                    break
+                end
+            end
+
+            if not isOurTrack then
+                if self.BlockLowerPriorityOnly then
+                    if track.Priority < currentTrack.Priority then
+                        pcall(function() track:Stop(0.1) end)
+                    end
+                else
+                    pcall(function() track:Stop(0.1) end)
+                end
+            end
+        end
+    end
 end
 
 function AnimationService:Init()
@@ -246,14 +276,23 @@ function AnimationService:_playInternal(name)
 
     local opt = self.Options[name] or {}
 
-    if opt.Priority then track.Priority = opt.Priority end
+    if opt.Priority then
+        track.Priority = opt.Priority
+    else
+        track.Priority = Enum.AnimationPriority.Action
+    end
 
     track:Play(opt.FadeTime or 0.15)
-    if opt.Speed then track:AdjustSpeed(opt.Speed) end
+    if opt.Speed then
+        track:AdjustSpeed(opt.Speed)
+    end
+
+    self:_blockOtherAnimations(track)
 
     track.Stopped:Connect(function()
         if self.Enabled[name] then
             track:Play(0.1)
+            self:_blockOtherAnimations(track)
         end
     end)
 
@@ -290,7 +329,134 @@ function AnimationService:StopAll()
     end
 end
 
+function AnimationService:SetPriorityLock(state)
+    self.PriorityLock = state == true
+end
+
 AnimationService:Init()
+
+repeat task.wait() until game:IsLoaded()
+
+getgenv().ForsakenAttackAnimations = getgenv().ForsakenAttackAnimations or {
+    "rbxassetid://131430497821198",
+    "rbxassetid://83829782357897",
+    "rbxassetid://126830014841198",
+    "rbxassetid://126355327951215",
+    "rbxassetid://121086746534252",
+    "rbxassetid://105458270463374",
+    "rbxassetid://18885919947",
+    "rbxassetid://18885909645",
+    "rbxassetid://87259391926321",
+    "rbxassetid://106014898528300",
+    "rbxassetid://87259391926321",
+    "rbxassetid://86545133269813",
+    "rbxassetid://89448354637442",
+    "rbxassetid://90499469533503",
+    "rbxassetid://116618003477002",
+    "rbxassetid://106086955212611",
+    "rbxassetid://107640065977686",
+    "rbxassetid://77124578197357",
+    "rbxassetid://101771617803133",
+    "rbxassetid://134958187822107",
+    "rbxassetid://111313169447787",
+    "rbxassetid://71685573690338",
+    "rbxassetid://129843313690921",
+    "rbxassetid://97623143664485",
+    "rbxassetid://129843313690921",
+    "rbxassetid://136007065400978",
+    "rbxassetid://136007065400978",
+    "rbxassetid://86096387000557",
+    "rbxassetid://108807732150251",
+    "rbxassetid://138040001965654",
+    "rbxassetid://73502073176819",
+    "rbxassetid://129843313690921",
+    "rbxassetid://97623143664485",
+    "rbxassetid://129843313690921",
+    "rbxassetid://97623143664485",
+    "rbxassetid://86709774283672",
+    "rbxassetid://106014898528300",
+    "rbxassetid://87259391926321",
+    "rbxassetid://140703210927645",
+    "rbxassetid://96173857867228",
+    "rbxassetid://121255898612475",
+    "rbxassetid://98031287364865",
+    "rbxassetid://119462383658044",
+    "rbxassetid://77448521277146",
+    "rbxassetid://77448521277146",
+    "rbxassetid://103741352379819",
+    "rbxassetid://119462383658044",
+    "rbxassetid://131696603025265",
+    "rbxassetid://122503338277352",
+    "rbxassetid://97648548303678",
+    "rbxassetid://94162446513587",
+    "rbxassetid://93069721274110",
+    "rbxassetid://97433060861952",
+    "rbxassetid://100592913030351",
+    "rbxassetid://121293883585738",
+    "rbxassetid://100592913030351",
+    "rbxassetid://121293883585738",
+    "rbxassetid://100592913030351",
+    "rbxassetid://121293883585738",
+    "rbxassetid://70447634862911",
+    "rbxassetid://92173139187970",
+    "rbxassetid://106847695270773",
+    "rbxassetid://125403313786645",
+    "rbxassetid://81639435858902",
+    "rbxassetid://137314737492715",
+    "rbxassetid://120112897026015",
+    "rbxassetid://82113744478546",
+    "rbxassetid://118298475669935",
+    "rbxassetid://82113744478546",
+    "rbxassetid://118298475669935",
+    "rbxassetid://126681776859538",
+    "rbxassetid://129976080405072",
+    "rbxassetid://109667959938617",
+    "rbxassetid://74707328554358",
+    "rbxassetid://133336594357903",
+    "rbxassetid://86204001129974",
+    "rbxassetid://82113744478546",
+    "rbxassetid://118298475669935",
+    "rbxassetid://124243639579224",
+    "rbxassetid://70371667919898",
+    "rbxassetid://131543461321709",
+    "rbxassetid://136323728355613",
+    "rbxassetid://109230267448394",
+    "rbxassetid://139835501033932",
+    "rbxassetid://106538427162796",
+    "rbxassetid://109667959938617",
+    "rbxassetid://126681776859538",
+    "rbxassetid://129976080405072",
+    "rbxassetid://110400453990786",
+    "rbxassetid://83685305553364",
+    "rbxassetid://126171487400618",
+    "rbxassetid://122709416391891",
+    "rbxassetid://87989533095285",
+    "rbxassetid://119326397274934",
+    "rbxassetid://140365014326125",
+    "rbxassetid://139309647473555",
+    "rbxassetid://133363345661032",
+    "rbxassetid://128414736976503",
+    "rbxassetid://121808371053483",
+    "rbxassetid://77375846492436",
+    "rbxassetid://92445608014276",
+    "rbxassetid://100358581940485",
+    "rbxassetid://91758760621955",
+    "rbxassetid://94634594529334",
+    "rbxassetid://101101433684051",
+    "rbxassetid://90620531468240",
+    "rbxassetid://94958041603347",
+    "rbxassetid://131642454238375",
+    "rbxassetid://110702884830060",
+    "rbxassetid://76312020299624",
+    "rbxassetid://126654961540956",
+    "rbxassetid://139613699193400",
+    "rbxassetid://91509234639766",
+    "rbxassetid://105458270463374",
+    "rbxassetid://109777684604906",
+    "rbxassetid://84069821282466",
+    "rbxassetid://135283134632311",
+    "rbxassetid://127846074966393"
+}
 
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
@@ -376,7 +542,7 @@ if not getgenv().TransparencyEnabled then
 end
 
 local Window = WindUI:CreateWindow({
-    Title = "Hutao Hub [Premium]",
+    Title = "Hutao Hub [Free]",
     Icon = "rbxassetid://109995816235688", 
     Author = "Forsaken | By: SLK GAMING",
     Folder = "HutaoHub - WindUI",
@@ -457,7 +623,7 @@ Color = ColorSequence.new({
 })
 
 Window:Tag({
-    Title = "v2.3.8",
+    Title = "v2.3.9",
     Color = Color3.fromHex("#30ff6a")
 })
 
@@ -2257,110 +2423,102 @@ end)
 
 TabHandles.Survivors:Section({ Title = "007n7", Icon = "ghost" })
 
-local ANIM_ID = "rbxassetid://75804462760596"
-local InvisibleTrack = nil
+local INVISIBLE_ANIM_NAME = "InstantInvisible"
+local INVISIBLE_ANIM_ID = 115509603980568
 
 local InstantInvisibleEnabled = false
 local CloneInvisibleEnabled = false
 
-local function getHumanoid()
-    local char = getChar()
-    return char and char:FindFirstChildOfClass("Humanoid"), char
-end
+local invisibleActive = false
+local lastCloneState = nil
 
-local function getAnimator(humanoid)
-    local animator = humanoid:FindFirstChildOfClass("Animator")
-    if not animator then
-        animator = Instance.new("Animator")
-        animator.Parent = humanoid
+task.spawn(function()
+    while not AnimationService
+        or not AnimationService.Animator
+        or not AnimationService.Register
+    do
+        task.wait()
     end
-    return animator
+
+    AnimationService:Register(INVISIBLE_ANIM_NAME, INVISIBLE_ANIM_ID, {
+        Priority = Enum.AnimationPriority.Action4,
+        Speed = 0,
+        FadeTime = 0.1
+    })
+end)
+
+local function getCharSafe()
+    return getChar()
 end
 
-local function playAnim(humanoid)
-    if not humanoid then return end
-    if InvisibleTrack and InvisibleTrack.IsPlaying then return end
-
-    local anim = Instance.new("Animation")
-    anim.AnimationId = ANIM_ID
-
-    local animator = getAnimator(humanoid)
-    InvisibleTrack = animator:LoadAnimation(anim)
-    InvisibleTrack.Looped = true
-    InvisibleTrack:Play()
-    InvisibleTrack:AdjustSpeed(0)
-end
-
-local function stopAnim()
-    if InvisibleTrack then
-        pcall(function()
-            InvisibleTrack:Stop()
-        end)
-        InvisibleTrack = nil
+local function updateInstantInvisible()
+    if not InstantInvisibleEnabled then
+        if invisibleActive then
+            invisibleActive = false
+            AnimationService:Disable(INVISIBLE_ANIM_NAME)
+            AnimationService:SetPriorityLock(false)
+        end
+        return
     end
-end
 
-local function applyInstantInvisible()
-    if not InstantInvisibleEnabled then return end
-
-    local humanoid, char = getHumanoid()
-    if not humanoid or not char then return end
+    local char = getCharSafe()
+    if not char then return end
 
     local survivorsFolder = getSurvivorsFolder()
-    if survivorsFolder and survivorsFolder:FindFirstChild(char.Name) then
-        playAnim(humanoid)
-    else
-        stopAnim()
+    local isSurvivor = survivorsFolder and survivorsFolder:FindFirstChild(char.Name)
+
+    if isSurvivor and not invisibleActive then
+        invisibleActive = true
+        AnimationService:SetPriorityLock(true)
+        AnimationService:Enable(INVISIBLE_ANIM_NAME)
+
+    elseif not isSurvivor and invisibleActive then
+        invisibleActive = false
+        AnimationService:Disable(INVISIBLE_ANIM_NAME)
+        AnimationService:SetPriorityLock(false)
     end
 end
 
-local function applyCloneInvisible()
+local function updateCloneInvisible()
     if not CloneInvisibleEnabled then return end
 
-    local humanoid, char = getHumanoid()
+    local char = getCharSafe()
     if not char then return end
 
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-    if torso and torso.Transparency ~= 0 then
-        if char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.Transparency = 0.4
-        end
-    else
-        if char:FindFirstChild("HumanoidRootPart") then
-            char.HumanoidRootPart.Transparency = 1
-        end
-    end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local newState = torso and torso.Transparency ~= 0
+    if newState == lastCloneState then return end
+    lastCloneState = newState
+
+    hrp.Transparency = newState and 0.4 or 1
 end
 
-RunService.Heartbeat:Connect(function()
-    applyInstantInvisible()
-    applyCloneInvisible()
+task.spawn(function()
+    while true do
+        task.wait(0.25)
+        updateInstantInvisible()
+        updateCloneInvisible()
+    end
 end)
 
 TabHandles.Survivors:Toggle({
     Title = "Instant Invisible",
-    Locked = false,
     Value = false,
     Callback = function(v)
         InstantInvisibleEnabled = v
-        if not v then
-            stopAnim()
-        end
+        updateInstantInvisible()
     end
 })
 
 TabHandles.Survivors:Toggle({
     Title = "Invisible If Cloned",
-    Locked = false,
     Value = false,
     Callback = function(v)
         CloneInvisibleEnabled = v
-        if not v then
-            local _, char = getHumanoid()
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.Transparency = 1
-            end
-        end
+        lastCloneState = nil
     end
 })
 
@@ -3761,6 +3919,123 @@ if StaminaModule then
     })
 end
 
+TabHandles.Player:Section({ Title = "Hitbox", Icon = "flame" })
+
+getgenv().ForsakenReachEnabled = getgenv().ForsakenReachEnabled or false
+getgenv().NearestDist = getgenv().NearestDist or 120
+getgenv().ForsakenRNG = getgenv().ForsakenRNG or Random.new()
+
+local RNG = getgenv().ForsakenRNG
+
+TabHandles.Player:Toggle({
+    Title = "Hitbox Devil",
+    Locked = false,
+    Value = getgenv().ForsakenReachEnabled,
+    Callback = function(val)
+        getgenv().ForsakenReachEnabled = val
+    end
+})
+
+TabHandles.Player:Slider({
+    Title = "Distance",
+    Value = {
+        Min = 10,
+        Max = 300,
+        Default = getgenv().NearestDist
+    },
+    Callback = function(value)
+        getgenv().NearestDist = value
+    end
+})
+
+local function getSafePing()
+    local ok, ping = pcall(LocalPlayer.GetNetworkPing, LocalPlayer)
+    return (ok and typeof(ping) == "number" and ping > 0) and ping or 0.05
+end
+
+local function scanFolder(folder, bestDist)
+    if not folder or not HRP then return nil, bestDist end
+
+    local target
+    for _, model in ipairs(folder:GetChildren()) do
+        if model ~= Character then
+            local hrp2 = model:FindFirstChild("HumanoidRootPart")
+            local hum2 = model:FindFirstChild("Humanoid")
+            if hrp2 and hum2 then
+                local dist = (hrp2.Position - HRP.Position).Magnitude
+                if dist < bestDist then
+                    bestDist = dist
+                    target = model
+                end
+            end
+        end
+    end
+
+    return target, bestDist
+end
+
+local function ForsakenReachLogic()
+    if not getgenv().ForsakenReachEnabled then return end
+    if not Humanoid or not HRP then return end
+
+    local playing = false
+    for _, track in ipairs(Humanoid:GetPlayingAnimationTracks()) do
+        local anim = track.Animation
+        if anim
+        and table.find(getgenv().ForsakenAttackAnimations, anim.AnimationId)
+        and track.Length > 0
+        and (track.TimePosition / track.Length < 0.75) then
+            playing = true
+            break
+        end
+    end
+    if not playing then return end
+
+    local killers = getKillersFolder()
+    local survivors = getSurvivorsFolder()
+
+    local opposite =
+        (killers and killers:FindFirstChild(Character.Name)) and survivors
+        or (survivors and survivors:FindFirstChild(Character.Name)) and killers
+
+    local target, bestDist = scanFolder(opposite, getgenv().NearestDist)
+
+    if not target then
+        target, bestDist = scanFolder(Workspace:FindFirstChild("Players"), bestDist)
+    end
+
+    if not target then
+        local map = Workspace:FindFirstChild("Map")
+        if map then
+            local ok, npcs = pcall(map.FindFirstChild, map, "NPCs", true)
+            if ok and npcs then
+                target, bestDist = scanFolder(npcs, bestDist)
+            end
+        end
+    end
+
+    if not target or not target:FindFirstChild("HumanoidRootPart") then return end
+
+    local oldVel = HRP.Velocity
+    local ping = getSafePing()
+
+    HRP.Velocity =
+        (target.HumanoidRootPart.Position
+        + Vector3.new(RNG:NextNumber(-1.5,1.5), 0, RNG:NextNumber(-1.5,1.5))
+        + (target.HumanoidRootPart.Velocity * (ping * 1.25))
+        - HRP.Position) / (ping * 2)
+
+    RunService.RenderStepped:Wait()
+    HRP.Velocity = oldVel
+end
+
+task.spawn(function()
+    while true do
+        task.wait()
+        pcall(ForsakenReachLogic)
+    end
+end)
+
 local WalkSpeed = { Value = 16, Active = false, Loop = nil }
 
 TabHandles.Player:Section({ Title = "Walk Speed", Icon = "gauge" })
@@ -4556,4 +4831,3 @@ RunService.RenderStepped:Connect(function()
         end
     end
 end)
-
