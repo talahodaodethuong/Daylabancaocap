@@ -542,7 +542,7 @@ if not getgenv().TransparencyEnabled then
 end
 
 local Window = WindUI:CreateWindow({
-    Title = "Hutao Hub [Free]",
+    Title = "Hutao Hub [Premium]",
     Icon = "rbxassetid://109995816235688", 
     Author = "Forsaken | By: SLK GAMING",
     Folder = "HutaoHub - WindUI",
