@@ -438,7 +438,6 @@ getgenv().ForsakenAttackAnimations = getgenv().ForsakenAttackAnimations or {
     "rbxassetid://128414736976503",
     "rbxassetid://121808371053483",
     "rbxassetid://77375846492436",
-    "rbxassetid://92445608014276",
     "rbxassetid://100358581940485",
     "rbxassetid://91758760621955",
     "rbxassetid://94634594529334",
@@ -556,7 +555,7 @@ local Window = WindUI:CreateWindow({
     ScrollBarEnabled = true,
     User = {
         Enabled = true,
-        Anonymous = false,
+        Anonymous = true,
         Callback = function()
             currentThemeIndex = currentThemeIndex + 1
             if currentThemeIndex > #themes then
@@ -623,7 +622,7 @@ Color = ColorSequence.new({
 })
 
 Window:Tag({
-    Title = "v2.3.9",
+    Title = "v2.5.8",
     Color = Color3.fromHex("#30ff6a")
 })
 
@@ -643,6 +642,7 @@ local TabHandles = {
     Emote = Tabs.Custom:Tab({ Title = "Emote", Icon = "smile", Desc = "" }),
     Animation = Tabs.Custom:Tab({ Title = "Animation", Icon = "activity", Desc = "" }),
     Skills = Tabs.Custom:Tab({ Title = "Skills", Icon = "wand", Desc = "" }),
+    Name = Tabs.Custom:Tab({ Title = "Name", Icon = "type", Desc = "" }),
     Event = Tabs.Game:Tab({ Title = "Event", Icon = "bell", Desc = "" }),
     Teleport = Tabs.Game:Tab({ Title = "Teleport", Icon = "map", Desc = "" }),
     Player = Tabs.Game:Tab({ Title = "Player", Icon = "user", Desc = "" }),
@@ -2447,59 +2447,100 @@ task.spawn(function()
     })
 end)
 
-local function getCharSafe()
-    return getChar()
+local function getCurrentRole()
+    local char = getChar()
+    if not char then return nil end
+
+    local name = char.Name
+
+    local survivors = getSurvivorsFolder()
+    if survivors and survivors:FindFirstChild(name) then
+        return "Survivor"
+    end
+
+    local killers = getKillersFolder()
+    if killers and killers:FindFirstChild(name) then
+        return "Killer"
+    end
+
+    return nil
+end
+
+local function forceDisableInvisible()
+    if invisibleActive then
+        invisibleActive = false
+        AnimationService:Disable(INVISIBLE_ANIM_NAME)
+        AnimationService:SetPriorityLock(false)
+    end
+    lastCloneState = nil
 end
 
 local function updateInstantInvisible()
     if not InstantInvisibleEnabled then
-        if invisibleActive then
-            invisibleActive = false
-            AnimationService:Disable(INVISIBLE_ANIM_NAME)
-            AnimationService:SetPriorityLock(false)
-        end
+        forceDisableInvisible()
         return
     end
 
-    local char = getCharSafe()
-    if not char then return end
-
-    local survivorsFolder = getSurvivorsFolder()
-    local isSurvivor = survivorsFolder and survivorsFolder:FindFirstChild(char.Name)
-
-    if isSurvivor and not invisibleActive then
-        invisibleActive = true
-        AnimationService:SetPriorityLock(true)
-        AnimationService:Enable(INVISIBLE_ANIM_NAME)
-
-    elseif not isSurvivor and invisibleActive then
-        invisibleActive = false
-        AnimationService:Disable(INVISIBLE_ANIM_NAME)
-        AnimationService:SetPriorityLock(false)
+    local role = getCurrentRole()
+    if role then
+        if not invisibleActive then
+            invisibleActive = true
+            AnimationService:SetPriorityLock(true)
+            AnimationService:Enable(INVISIBLE_ANIM_NAME)
+        end
+    else
+        forceDisableInvisible()
     end
 end
 
 local function updateCloneInvisible()
     if not CloneInvisibleEnabled then return end
+    if not getCurrentRole() then
+        lastCloneState = nil
+        return
+    end
 
-    local char = getCharSafe()
+    local char = getChar()
     if not char then return end
 
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hrp = getHRP()
+    if not torso or not hrp then return end
 
-    local newState = torso and torso.Transparency ~= 0
+    local newState = torso.Transparency ~= 0
     if newState == lastCloneState then return end
     lastCloneState = newState
 
     hrp.Transparency = newState and 0.4 or 1
 end
 
+LocalPlayer.CharacterAdded:Connect(function()
+    forceDisableInvisible()
+    task.wait(0.1)
+    updateInstantInvisible()
+end)
+
+task.spawn(function()
+    while not getSurvivorsFolder() or not getKillersFolder() do
+        task.wait()
+    end
+
+    local sFolder = getSurvivorsFolder()
+    local kFolder = getKillersFolder()
+
+    local function roleChanged()
+        updateInstantInvisible()
+    end
+
+    sFolder.ChildAdded:Connect(roleChanged)
+    sFolder.ChildRemoved:Connect(roleChanged)
+    kFolder.ChildAdded:Connect(roleChanged)
+    kFolder.ChildRemoved:Connect(roleChanged)
+end)
+
 task.spawn(function()
     while true do
         task.wait(0.25)
-        updateInstantInvisible()
         updateCloneInvisible()
     end
 end)
@@ -2982,7 +3023,6 @@ animationIds = {
         ["133363345661032"] = true,
         ["128414736976503"] = true,
         ["77375846492436"] = true,
-        ["92445608014276"] = true,
         ["100358581940485"] = true,
         ["91758760621955"] = true,
         ["94634594529334"] = true,
@@ -3525,6 +3565,227 @@ TabHandles.Survivors:Toggle({
     end
 })
 
+TabHandles.Killers:Section({ Title = "Noli", Icon = "sparkles" })
+
+local VoidRushController = {}
+
+VoidRushController.Toggle = false
+VoidRushController.IsActive = false
+VoidRushController.Aimbot = false
+
+VoidRushController.OriginalDashSpeed = 60
+VoidRushController.DefaultWalkSpeed = 16
+VoidRushController.AimSpeed = 0.9
+
+VoidRushController.DashConnection = nil
+VoidRushController.KillerConn = nil
+VoidRushController.CheckThread = nil
+VoidRushController.AimbotThread = nil
+
+function VoidRushController:Start()
+    if self.IsActive then return end
+    local hum = getHumanoid()
+    local root = getHRP()
+    if not hum or not root then return end
+
+    self.IsActive = true
+
+    self.DashConnection = RunService.RenderStepped:Connect(function()
+        if not self.IsActive then return end
+        local hum = getHumanoid()
+        local root = getHRP()
+        if not hum or not root then return end
+
+        hum.WalkSpeed = self.OriginalDashSpeed
+        hum.AutoRotate = false
+
+        local look = root.CFrame.LookVector
+        local dir = Vector3.new(look.X, 0, look.Z)
+        if dir.Magnitude > 0 then
+            hum:Move(dir.Unit, false)
+        end
+    end)
+end
+
+function VoidRushController:Stop()
+    if not self.IsActive then return end
+    self.IsActive = false
+
+    if self.DashConnection then
+        self.DashConnection:Disconnect()
+        self.DashConnection = nil
+    end
+
+    local hum = getHumanoid()
+    if hum then
+        hum.WalkSpeed = self.DefaultWalkSpeed
+        hum.AutoRotate = true
+        hum:Move(Vector3.zero, false)
+    end
+end
+
+function VoidRushController:FullCleanup()
+    self.Toggle = false
+    self.Aimbot = false
+    self:Stop()
+
+    if self.KillerConn then
+        self.KillerConn:Disconnect()
+        self.KillerConn = nil
+    end
+
+    if self.CheckThread then
+        task.cancel(self.CheckThread)
+        self.CheckThread = nil
+    end
+
+    if self.AimbotThread then
+        task.cancel(self.AimbotThread)
+        self.AimbotThread = nil
+    end
+end
+
+function VoidRushController:GetNearestSurvivor()
+    local survivorsFolder = getSurvivorsFolder()
+    if not survivorsFolder then return nil end
+
+    local myHRP = getHRP()
+    if not myHRP then return nil end
+
+    local nearest = nil
+    local minDist = math.huge
+
+    for _, survivor in ipairs(survivorsFolder:GetChildren()) do
+        if survivor ~= LocalPlayer.Character then
+            local hrp = survivor:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local dist = (hrp.Position - myHRP.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    nearest = survivor
+                end
+            end
+        end
+    end
+
+    return nearest
+end
+
+function VoidRushController:CheckVoidRush()
+    if self.CheckThread then return end
+
+    self.CheckThread = task.spawn(function()
+        while self.Toggle do
+            local killersFolder = getKillersFolder()
+            if killersFolder then
+                local myName = LocalPlayer.Name
+                local noliKiller = nil
+
+                for _, killer in ipairs(killersFolder:GetChildren()) do
+                    local username = killer:GetAttribute("Username")
+                    local displayName = killer:GetAttribute("ActorDisplayName")
+                    if username == myName and displayName == "Noli" then
+                        noliKiller = killer
+                        break
+                    end
+                end
+
+                if noliKiller then
+                    local function updateState()
+                        if not self.Toggle then
+                            self:Stop()
+                            return
+                        end
+
+                        local state = noliKiller:GetAttribute("VoidRushState")
+                        if state == "Dashing" then
+                            self:Start()
+                        else
+                            self:Stop()
+                        end
+                    end
+
+                    updateState()
+
+                    if self.KillerConn then
+                        self.KillerConn:Disconnect()
+                        self.KillerConn = nil
+                    end
+
+                    self.KillerConn = noliKiller:GetAttributeChangedSignal("VoidRushState"):Connect(updateState)
+
+                    local maxWait = 10
+                    local elapsed = 0
+                    while noliKiller and noliKiller.Parent and elapsed < maxWait and self.Toggle do
+                        task.wait(0.1)
+                        elapsed = elapsed + 0.1
+                    end
+
+                    if self.KillerConn then
+                        self.KillerConn:Disconnect()
+                        self.KillerConn = nil
+                    end
+
+                    self:Stop()
+                end
+            end
+
+            task.wait(0.15)
+        end
+
+        self.CheckThread = nil
+    end)
+end
+
+function VoidRushController:AimbotLoop()
+    if self.AimbotThread then return end
+
+    self.AimbotThread = task.spawn(function()
+        while self.Aimbot do
+            if self.IsActive then
+                local target = self:GetNearestSurvivor()
+                if target and target:FindFirstChild("HumanoidRootPart") then
+                    AimSystem.RotateTo(target.HumanoidRootPart.CFrame, self.AimSpeed)
+                end
+            end
+            task.wait(0.03)
+        end
+        self.AimbotThread = nil
+    end)
+end
+
+TabHandles.Killers:Toggle({
+    Title = "Void Rush Controller",
+    Locked = false,
+    Value = false,
+    Callback = function(state)
+        VoidRushController.Toggle = state
+
+        if state then
+            VoidRushController:CheckVoidRush()
+        else
+            VoidRushController:FullCleanup()
+        end
+    end
+})
+
+TabHandles.Killers:Toggle({
+    Title = "Void Rush Aimbot",
+    Locked = false,
+    Value = false,
+    Callback = function(state)
+        VoidRushController.Aimbot = state
+        VoidRushController.Toggle = state
+
+        if state then
+            VoidRushController:CheckVoidRush()
+            VoidRushController:AimbotLoop()
+        else
+            VoidRushController:FullCleanup()
+        end
+    end
+})
+
 TabHandles.Killers:Section({ Title = "1x1x1x1", Icon = "swords" })
 
 _G.MASS_AIM_MODE = "One Player"
@@ -3631,6 +3892,144 @@ TabHandles.Killers:Toggle({
     end
 })
 
+TabHandles.Killers:Section({ Title = "c00lkidd", Icon = "flame" })
+
+do
+local WALK_SPEED = 100
+local AIM_RANGE = 120
+local AIM_SPEED = 0.99
+
+local heartbeatConn
+local enabled = false
+local aimEnabled = false
+
+local validValues = {
+    Timeout = true,
+    Collide = true,
+    Hit = true
+}
+
+local function attachResultWatcher(character, stopFlag)
+    local function watch(result)
+        local function check()
+            if validValues[result.Value] then
+                stopFlag.value = true
+            end
+        end
+        check()
+        result:GetPropertyChangedSignal("Value"):Connect(check)
+    end
+
+    local result = character:FindFirstChild("Result")
+    if result and result:IsA("StringValue") then
+        watch(result)
+    end
+
+    character.ChildAdded:Connect(function(child)
+        if child.Name == "Result" and child:IsA("StringValue") then
+            watch(child)
+        end
+    end)
+end
+
+local function getNearestSurvivorCFrame()
+    local survivors = getSurvivorsFolder()
+    local myHRP = getHRP()
+    if not survivors or not myHRP then return nil end
+
+    local closestCF
+    local closestDist = AIM_RANGE
+
+    for _, char in ipairs(survivors:GetChildren()) do
+        if char:IsA("Model") then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+
+            if hrp and hum and hum.Health > 0 then
+                local dist = (hrp.Position - myHRP.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closestCF = hrp.CFrame
+                end
+            end
+        end
+    end
+
+    return closestCF
+end
+
+local function onHeartbeat()
+    if not enabled then return end
+
+    local char = getChar()
+    if not char or char.Name ~= "c00lkidd" then return end
+
+    local root = getHRP()
+    if not root then return end
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local lv = root:FindFirstChild("LinearVelocity")
+    if not humanoid or not lv then return end
+
+    local stopMovement = { value = false }
+    attachResultWatcher(char, stopMovement)
+
+    lv.VectorVelocity = Vector3.new(math.huge, math.huge, math.huge)
+    lv.Enabled = false
+
+    if stopMovement.value then return end
+
+    if aimEnabled then
+        humanoid.AutoRotate = false
+        local targetCF = getNearestSurvivorCFrame()
+        if targetCF then
+            AimSystem.RotateTo(targetCF, AIM_SPEED)
+        end
+    else
+        humanoid.AutoRotate = true
+    end
+
+    local lookVector = root.CFrame.LookVector
+    local dir = Vector3.new(lookVector.X, 0, lookVector.Z)
+
+    if dir.Magnitude > 0 then
+        dir = dir.Unit
+        root.Velocity = Vector3.new(
+            dir.X * WALK_SPEED,
+            root.Velocity.Y,
+            dir.Z * WALK_SPEED
+        )
+    end
+end
+
+TabHandles.Killers:Toggle({
+    Title = "Walkspeed Override Controller",
+    Locked = false,
+    Value = false,
+    Callback = function(state)
+        enabled = state
+
+        if heartbeatConn then
+            heartbeatConn:Disconnect()
+            heartbeatConn = nil
+        end
+
+        if state then
+            heartbeatConn = RunService.Heartbeat:Connect(onHeartbeat)
+        end
+    end
+})
+
+TabHandles.Killers:Toggle({
+    Title = "Walkspeed Override Aimbot",
+    Locked = false,
+    Value = false,
+    Callback = function(state)
+        aimEnabled = state
+    end
+})
+end
+
 AnimationService:Register("HakariDance", 138019937280193, { Speed = 1 })
 
 TabHandles.Emote:Toggle({
@@ -3682,6 +4081,149 @@ TabHandles.Emote:Toggle({
         end
     end
 })
+
+TabHandles.Name:Section({ Title = "You Name", Icon = "user-check" })
+
+do
+local FakeName = ""
+local FakeNameEnabled = false
+
+local OriginalNames = {}
+local Connections = {}
+
+local APPLY_INTERVAL = 0.25
+local lastApply = 0
+
+local function getMySurvivorCharacterName()
+    local survivors = getSurvivorsFolder()
+    local char = getChar()
+    local myHRP = getHRP()
+
+    if not survivors or not char or not myHRP then
+        return nil
+    end
+
+    for _, survivor in ipairs(survivors:GetChildren()) do
+        if survivor:IsA("Model") then
+            local hrp = survivor:FindFirstChild("HumanoidRootPart")
+            if hrp and hrp == myHRP then
+                return survivor.Name
+            end
+        end
+    end
+
+    return nil
+end
+
+local function getUsernameLabels()
+    local results = {}
+    local pg = getPlayerGui()
+    if not pg then return results end
+
+    local survivorName = getMySurvivorCharacterName()
+    if survivorName then
+        local holder = pg:FindFirstChild(survivorName, true)
+        if holder then
+            local label = holder:FindFirstChild("Username", true)
+            if label and label:IsA("TextLabel") then
+                results[#results + 1] = label
+            end
+        end
+    end
+
+    local selfHolder = pg:FindFirstChild(LocalPlayer.Name, true)
+    if selfHolder then
+        local label = selfHolder:FindFirstChild("Username", true)
+        if label and label:IsA("TextLabel") then
+            results[#results + 1] = label
+        end
+    end
+
+    return results
+end
+
+local function ApplyName(force)
+    if not FakeNameEnabled or FakeName == "" then
+        return
+    end
+
+    local now = os.clock()
+    if not force and (now - lastApply) < APPLY_INTERVAL then
+        return
+    end
+    lastApply = now
+
+    local labels = getUsernameLabels()
+
+    for _, label in ipairs(labels) do
+        if OriginalNames[label] == nil then
+            OriginalNames[label] = label.Text
+        end
+
+        local owned =
+            OriginalNames[label] == LocalPlayer.Name
+            or OriginalNames[label] == label.Text
+
+        if owned then
+            if label.Text ~= FakeName then
+                label.Text = FakeName
+            end
+        end
+    end
+end
+
+local function RestoreName()
+    for label, text in pairs(OriginalNames) do
+        if label and label.Parent then
+            label.Text = text
+        end
+    end
+    table.clear(OriginalNames)
+end
+
+local function StopAutoLoop()
+    for _, c in ipairs(Connections) do
+        c:Disconnect()
+    end
+    table.clear(Connections)
+end
+
+local function StartAutoLoop()
+    StopAutoLoop()
+
+    Connections[1] = RunService.Heartbeat:Connect(function()
+        if FakeNameEnabled then
+            ApplyName(false)
+        end
+    end)
+end
+
+TabHandles.Name:Input({
+    Title = "Custom Name",
+    Value = "",
+    Placeholder = "Enter Fake Name",
+    Callback = function(v)
+        FakeName = tostring(v or "")
+        ApplyName(true)
+    end
+})
+
+TabHandles.Name:Toggle({
+    Title = "Fake Name",
+    Value = false,
+    Callback = function(state)
+        FakeNameEnabled = state
+
+        if state then
+            ApplyName(true)
+            StartAutoLoop()
+        else
+            StopAutoLoop()
+            RestoreName()
+        end
+    end
+})
+end
 
 TabHandles.Event:Section({ Title = "Holiday", Icon = "gift" })
 
@@ -3924,6 +4466,7 @@ TabHandles.Player:Section({ Title = "Hitbox", Icon = "flame" })
 getgenv().ForsakenReachEnabled = getgenv().ForsakenReachEnabled or false
 getgenv().NearestDist = getgenv().NearestDist or 120
 getgenv().ForsakenRNG = getgenv().ForsakenRNG or Random.new()
+getgenv().ForsakenAttackAnimations = getgenv().ForsakenAttackAnimations or {}
 
 local RNG = getgenv().ForsakenRNG
 
@@ -3950,7 +4493,10 @@ TabHandles.Player:Slider({
 
 local function getSafePing()
     local ok, ping = pcall(LocalPlayer.GetNetworkPing, LocalPlayer)
-    return (ok and typeof(ping) == "number" and ping > 0) and ping or 0.05
+    if ok and typeof(ping) == "number" and ping > 0 then
+        return math.clamp(ping, 0.03, 0.12)
+    end
+    return 0.05
 end
 
 local function scanFolder(folder, bestDist)
@@ -3961,7 +4507,7 @@ local function scanFolder(folder, bestDist)
         if model ~= Character then
             local hrp2 = model:FindFirstChild("HumanoidRootPart")
             local hum2 = model:FindFirstChild("Humanoid")
-            if hrp2 and hum2 then
+            if hrp2 and hum2 and hum2.Health > 0 then
                 local dist = (hrp2.Position - HRP.Position).Magnitude
                 if dist < bestDist then
                     bestDist = dist
@@ -3974,59 +4520,69 @@ local function scanFolder(folder, bestDist)
     return target, bestDist
 end
 
+local lastBlink = 0
+local BLINK_COOLDOWN = 0.05
+
 local function ForsakenReachLogic()
     if not getgenv().ForsakenReachEnabled then return end
     if not Humanoid or not HRP then return end
+    if tick() - lastBlink < BLINK_COOLDOWN then return end
 
-    local playing = false
+    local attacking = false
     for _, track in ipairs(Humanoid:GetPlayingAnimationTracks()) do
         local anim = track.Animation
         if anim
         and table.find(getgenv().ForsakenAttackAnimations, anim.AnimationId)
         and track.Length > 0
         and (track.TimePosition / track.Length < 0.75) then
-            playing = true
+            attacking = true
             break
         end
     end
-    if not playing then return end
+    if not attacking then return end
 
     local killers = getKillersFolder()
     local survivors = getSurvivorsFolder()
-
     local opposite =
         (killers and killers:FindFirstChild(Character.Name)) and survivors
         or (survivors and survivors:FindFirstChild(Character.Name)) and killers
 
     local target, bestDist = scanFolder(opposite, getgenv().NearestDist)
-
     if not target then
         target, bestDist = scanFolder(Workspace:FindFirstChild("Players"), bestDist)
     end
+    if not target then return end
 
-    if not target then
-        local map = Workspace:FindFirstChild("Map")
-        if map then
-            local ok, npcs = pcall(map.FindFirstChild, map, "NPCs", true)
-            if ok and npcs then
-                target, bestDist = scanFolder(npcs, bestDist)
-            end
-        end
-    end
+    local targetHRP = target:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return end
 
-    if not target or not target:FindFirstChild("HumanoidRootPart") then return end
+    lastBlink = tick()
 
+    local oldCF = HRP.CFrame
     local oldVel = HRP.Velocity
-    local ping = getSafePing()
+    local camCF = Camera.CFrame
+    local oldCamType = Camera.CameraType
 
-    HRP.Velocity =
-        (target.HumanoidRootPart.Position
-        + Vector3.new(RNG:NextNumber(-1.5,1.5), 0, RNG:NextNumber(-1.5,1.5))
-        + (target.HumanoidRootPart.Velocity * (ping * 1.25))
-        - HRP.Position) / (ping * 2)
+    local ping = getSafePing()
+    local targetPos = targetHRP.Position + (targetHRP.Velocity * ping)
+    local blinkPos = Vector3.new(
+        targetPos.X + RNG:NextNumber(-1.1, 1.1),
+        oldCF.Position.Y,
+        targetPos.Z + RNG:NextNumber(-1.1, 1.1)
+    )
+
+    Camera.CameraType = Enum.CameraType.Scriptable
+    Camera.CFrame = camCF
+
+    HRP.Velocity = Vector3.zero
+    HRP.CFrame = CFrame.new(blinkPos, blinkPos + oldCF.LookVector)
 
     RunService.RenderStepped:Wait()
+
+    HRP.CFrame = oldCF
     HRP.Velocity = oldVel
+    Camera.CFrame = camCF
+    Camera.CameraType = oldCamType
 end
 
 task.spawn(function()
